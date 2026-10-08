@@ -1,0 +1,173 @@
+diff --git a/drivers/media/i2c/ov02c10.c b/drivers/media/i2c/ov02c10.c
+index e8011c8e0..9dbc67f36 100644
+--- a/drivers/media/i2c/ov02c10.c
++++ b/drivers/media/i2c/ov02c10.c
+@@ -459,12 +459,29 @@ static int ov02c10_set_ctrl(struct v4l2_ctrl *ctrl)
+ 		ret = ov02c10_test_pattern(ov02c10, ctrl->val);
+ 		break;
+ 
+-	case V4L2_CID_HFLIP:
++	case V4L2_CID_HFLIP: {
++		/*
++		 * Samsung Galaxy Book4 Edge: the module is mounted rotated by
++		 * 180 degrees, so the DT declares rotation = <180> and
++		 * libcamera consequently drives HFLIP and VFLIP together (it
++		 * cannot express a vertical-only transform - see the "Handle
++		 * horizontal and vertical flips independently" TODO in
++		 * camera_sensor_legacy.cpp). Applying both yields the true,
++		 * un-mirrored scene, but a laptop front camera wants a mirrored
++		 * self-view. Inverting HFLIP here leaves the vertical flip in
++		 * place while cancelling the horizontal one, which is exactly a
++		 * mirrored upright image. The flip controls carry no
++		 * MODIFY_LAYOUT flag on this sensor, so the Bayer order is
++		 * unaffected.
++		 */
++		unsigned int hflip = !ctrl->val;
++
+ 		cci_write(ov02c10->regmap, OV02C10_ISP_X_WIN_CONTROL,
+-			  ctrl->val ? 2 : 1, &ret);
++			  hflip ? 2 : 1, &ret);
+ 		cci_update_bits(ov02c10->regmap, OV02C10_ROTATE_CONTROL,
+-				BIT(3), ctrl->val ? 0 : BIT(3), &ret);
++				BIT(3), hflip ? 0 : BIT(3), &ret);
+ 		break;
++	}
+ 
+ 	case V4L2_CID_VFLIP:
+ 		cci_write(ov02c10->regmap, OV02C10_ISP_Y_WIN_CONTROL,
+diff --git a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+index 1a99efee8..3a0ad157d 100644
+--- a/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
++++ b/drivers/phy/qualcomm/phy-qcom-mipi-csi2-3ph-dphy.c
+@@ -8,6 +8,7 @@
+  * Copyright (C) 2016-2025 Linaro Ltd.
+  */
+ #define DEBUG
++#include <linux/atomic.h>
+ #include <linux/delay.h>
+ #include <linux/interrupt.h>
+ #include <linux/io.h>
+@@ -216,11 +217,30 @@ static void phy_qcom_mipi_csi2_reset(struct mipi_csi2phy_device *csi2phy)
+ 		       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 0));
+ }
+ 
++static atomic_t dbg_irq_count = ATOMIC_INIT(0);
++
+ static irqreturn_t phy_qcom_mipi_csi2_isr(int irq, void *dev)
+ {
+ 	const struct mipi_csi2phy_device *csi2phy = dev;
+ 	const struct mipi_csi2phy_device_regs *regs = csi2phy_dev_to_regs(csi2phy);
+ 	int i;
++	int n = atomic_inc_return(&dbg_irq_count);
++
++	if (n <= 20) {
++		u32 s[11];
++
++		for (i = 0; i < 11; i++)
++			s[i] = readl_relaxed(csi2phy->base +
++				CSIPHY_3PH_CMN_CSI_COMMON_STATUSn(regs->offset, i));
++		pr_info("CSIPHYDBG irq#%d status %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
++			n, s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8], s[9], s[10]);
++	}
++	if (n == 500) {
++		pr_info("CSIPHYDBG irq storm - remasking\n");
++		for (i = 11; i < 22; i++)
++			writel_relaxed(0, csi2phy->base +
++				CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, i));
++	}
+ 
+ 	for (i = 0; i < 11; i++) {
+ 		int c = i + 22;
+@@ -382,6 +402,7 @@ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 	struct mipi_csi2phy_lanes_cfg *lane_cfg = &cfg->lane_cfg;
+ 	u8 settle_cnt;
+ 	u8 val;
++	u8 dbg_lane_mask = 0;
+ 	int i;
+ 
+ 	settle_cnt = phy_qcom_mipi_csi2_settle_cnt_calc(cfg->link_freq, csi2phy->timer_clk_rate);
+@@ -389,6 +410,7 @@ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 	val = CSIPHY_3PH_CMN_CSI_COMMON_CTRL5_CLK_ENABLE;
+ 	for (i = 0; i < cfg->num_data_lanes; i++)
+ 		val |= BIT(lane_cfg->data[i].pos * 2);
++	dbg_lane_mask = val;
+ 
+ 	writel_relaxed(val, csi2phy->base +
+ 		       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 5));
+@@ -410,12 +432,29 @@ static int phy_qcom_mipi_csi2_lanes_enable(struct mipi_csi2phy_device *csi2phy,
+ 	else
+ 		phy_qcom_mipi_csi2_gen1_config_lanes(csi2phy, cfg, settle_cnt);
+ 
+-	/* IRQ_MASK registers - disable all interrupts */
++	/* CSIPHYDBG: ENABLE the interrupts this driver normally masks off */
+ 	for (i = 11; i < 22; i++) {
+-		writel_relaxed(0, csi2phy->base +
++		writel_relaxed(0xff, csi2phy->base +
+ 			       CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, i));
+ 	}
+ 
++	atomic_set(&dbg_irq_count, 0);
++	pr_info("CSIPHYDBG enable: link_freq=%lld timer_clk=%u settle=%u lanes=%u mask=0x%02x gen2=%d\n",
++		cfg->link_freq, csi2phy->timer_clk_rate, settle_cnt,
++		cfg->num_data_lanes, dbg_lane_mask, phy_qcom_mipi_csi2_is_gen2(csi2phy));
++	pr_info("CSIPHYDBG hw_version=0x%08x CTRL5_readback=0x%02x\n",
++		csi2phy->hw_version,
++		readl_relaxed(csi2phy->base +
++			CSIPHY_3PH_CMN_CSI_COMMON_CTRLn(regs->offset, 5)));
++	{
++		int k;
++
++		for (k = 0; k < 11; k++)
++			pr_info("CSIPHYDBG post-enable STATUS%d = 0x%02x\n", k,
++				readl_relaxed(csi2phy->base +
++					CSIPHY_3PH_CMN_CSI_COMMON_STATUSn(regs->offset, k)));
++	}
++
+ 	return 0;
+ }
+ 
+diff --git a/drivers/ufs/core/ufshcd.c b/drivers/ufs/core/ufshcd.c
+index a41b56dbf..98df15e22 100644
+--- a/drivers/ufs/core/ufshcd.c
++++ b/drivers/ufs/core/ufshcd.c
+@@ -321,6 +321,9 @@ static const struct ufs_dev_quirk ufs_fixups[] = {
+ 	{ .wmanufacturerid = UFS_VENDOR_TOSHIBA,
+ 	  .model = "THGJFJT1E45BATP",
+ 	  .quirk = UFS_DEVICE_QUIRK_NO_TIMESTAMP_SUPPORT },
++	{ .wmanufacturerid = UFS_VENDOR_TOSHIBA,
++	  .model = "THGJFJT2T85BAT0A",
++	  .quirk = UFS_DEVICE_QUIRK_NO_TIMESTAMP_SUPPORT },
+ 	{}
+ };
+ 
+diff --git a/mm/page_alloc.c b/mm/page_alloc.c
+index ee902a468..eac894fdf 100644
+--- a/mm/page_alloc.c
++++ b/mm/page_alloc.c
+@@ -2463,7 +2463,7 @@ __rmqueue(struct zone *zone, unsigned int order, int migratetype,
+ 		 * is in the CMA area.
+ 		 */
+ 		if (alloc_flags & ALLOC_CMA &&
+-		    zone_page_state(zone, NR_FREE_CMA_PAGES) >
++		    min(zone_page_state(zone, NR_FREE_CMA_PAGES), zone_cma_pages(zone)) >
+ 		    zone_page_state(zone, NR_FREE_PAGES) / 2) {
+ 			page = __rmqueue_cma_fallback(zone, order);
+ 			if (page)
+@@ -3569,9 +3569,15 @@ static inline long __zone_watermark_unusable_free(struct zone *z,
+ 		unusable_free += READ_ONCE(z->nr_free_highatomic);
+ 
+ #ifdef CONFIG_CMA
+-	/* If allocation can't use CMA areas don't use free CMA pages */
++	/*
++	 * If allocation can't use CMA areas don't use free CMA pages. Never count
++	 * more than the zone's CMA pages: on the Book4 Edge (X1P42100) the
++	 * NR_FREE_CMA_PAGES counter drifts far past the 128 MB pool during uptime,
++	 * which made usable free negative and starved kswapd and atomic allocations.
++	 */
+ 	if (!(alloc_flags & ALLOC_CMA))
+-		unusable_free += zone_page_state(z, NR_FREE_CMA_PAGES);
++		unusable_free += min(zone_page_state(z, NR_FREE_CMA_PAGES),
++				     zone_cma_pages(z));
+ #endif
+ 
+ 	return unusable_free;
