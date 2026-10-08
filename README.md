@@ -108,7 +108,9 @@ builds it. Rebuild the initramfs after installing firmware: the `FILES=` line in
 - `patches/`: `0001` adds the panel to panel-edp; `0002` mirrors the
   front camera's HFLIP (board-specific hack, explained in the message); `0003`
   adds the board DTS to the tree; `0004` caps a free-CMA counter that drifts
-  during uptime and froze the desktop (`docs/memory.md`).
+  during uptime and froze the desktop (`docs/memory.md`); `0005` is the UFS
+  no-timestamp quirk for this laptop's storage; `0006` gives the sound card one
+  name on every keyboard variant, so the UCM profile matches without a per-SKU link.
   `patches/debug/` holds CSIPHY diagnostics that the verified kernel carried; not a fix.
 - `config/`: the kernel config and what was changed from the base and why.
 - `driver/samsung-galaxybook-ec/`: ENE KB9058 EC over I2C: battery, AC,
