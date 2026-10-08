@@ -15,5 +15,6 @@ Differences from the config the machine was first brought up with, and why:
 | `LRU_GEN=y`, `LRU_GEN_ENABLED=y` | MGLRU reclaim; with `userspace/memory/mglru.conf` a memory squeeze stops one process instead of freezing the desktop (`docs/memory.md`) |
 | `CMA_SYSFS=y`, `CMA_DEBUGFS=y` | the CMA pool's own counters in `/sys/kernel/mm/cma/`, to compare with the drifting global count (`docs/memory.md`) |
 | `SAMSUNG_GALAXYBOOK4_EDGE=y` | turns on the touchpad the firmware names (`patches/0007`); built in, so it runs before the I2C driver loads |
+| `UCLAMP_TASK=y`, `UCLAMP_TASK_GROUP=y` | speed floors and ceilings per group of work (the window in front quick, background work cool): `~/book4-edge/power/tacit-power-policy-plan.md` step 2b |
 
 Everything else is unchanged from the base tree's config.
