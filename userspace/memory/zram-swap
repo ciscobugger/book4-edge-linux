@@ -1,5 +1,5 @@
 #!/bin/bash
-# zram swap: compressed swap in RAM. Half of RAM, capped at 8 GiB, zstd.
+# zram swap: compressed swap in RAM. All of RAM, capped at 16 GiB, zstd: ~2x compression keeps it near half of RAM when full.
 # The shipped kernel config has CONFIG_ZRAM=m. zram-generator does the same job; this
 # script is for systems whose cmdline carries systemd.zram=0 (which silences the generator).
 set -euo pipefail
@@ -8,7 +8,7 @@ case "${1:-}" in
     modprobe zram
     if swapon --show=NAME --noheadings | grep -qx /dev/zram0; then echo "zram0 already active"; exit 0; fi
     mem_kb=$(awk "/^MemTotal:/{print \$2}" /proc/meminfo)
-    size_mb=$(( mem_kb / 1024 / 2 )); [ "$size_mb" -gt 8192 ] && size_mb=8192
+    size_mb=$(( mem_kb / 1024 )); [ "$size_mb" -gt 16384 ] && size_mb=16384
     zramctl --reset /dev/zram0 2>/dev/null || true
     dev=$(zramctl --find --size "${size_mb}M" --algorithm zstd)
     mkswap -q "$dev" && swapon -p 100 "$dev"

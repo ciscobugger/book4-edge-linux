@@ -4,4 +4,4 @@
 # --avoid:  browser parents, the desktop session, audio, the charging daemon.
 # systemd-oomd is not used: with every app in one session scope it kills the whole desktop.
 # Word-split by systemd: no spaces or quotes inside patterns.
-EARLYOOM_ARGS="-m 5 -s 10 -r 0 -n --prefer (^|/)(Isolated.Web.Co|Web.Content|java|kotlin.*|gradle.*)$ --avoid (^|/)(zen|zen-bin|firefox|Hyprland|quickshell|sddm|Xwayland|pipewire|wireplumber|book4-pd-charge|systemd.*|dbus.*)$"
+EARLYOOM_ARGS="-m 8,4 -s 100,100 -r 0 -n --prefer (^|/)(Isolated.Web.Co|Web.Content|java|kotlin.*|gradle.*)$ --avoid (^|/)(zen|zen-bin|firefox|Hyprland|qs|quickshell|sddm|Xwayland|pipewire|wireplumber|book4-charge|agent-host|systemd.*|dbus.*)$"
