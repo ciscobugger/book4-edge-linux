@@ -10,6 +10,13 @@ chassis, and two values in the touchpad node belong to whichever one is installe
 Written from the DSDT of an NP750XQA (X1P42100), where the touchpad works, compared
 against the DSDT of an NP750XQB (X1P26100), where it does not.
 
+## In this port
+
+The device tree describes all four touchpads as `fail-needs-probe`, and the board code in
+`patches/0007` reads TPTY, TPDA and TPDO (below) at boot and turns on the matching node with
+the firmware's descriptor register. Nothing needs editing per SKU. The rest of this page
+explains the values, and how to read them by hand on another kernel.
+
 ## What varies between SKUs
 
 The firmware picks the touchpad's I2C address at runtime from a vendor code it calls

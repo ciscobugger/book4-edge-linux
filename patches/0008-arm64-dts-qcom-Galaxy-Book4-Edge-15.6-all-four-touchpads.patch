@@ -1,0 +1,75 @@
+From: Abdul <xizko55@gmail.com>
+Subject: [PATCH] arm64: dts: qcom: Galaxy Book4 Edge 15.6: all four touchpads
+
+The board takes one of four touchpads. Describe all four on i2c13 as
+"fail-needs-probe"; the board code (0007) turns on the one the firmware
+names. Before, only the Zinitix touchpad was described, and the other
+three never worked.
+---
+--- a/arch/arm64/boot/dts/qcom/x1p42100-samsung-galaxy-book4-edge-np750xqa.dts
++++ b/arch/arm64/boot/dts/qcom/x1p42100-samsung-galaxy-book4-edge-np750xqa.dts
+@@ -883,6 +883,41 @@
+ 
+ 	status = "okay";
+ 
++	/*
++	 * Samsung fits one of four touchpads. The firmware says which, with its descriptor
++	 * register, and the board code (drivers/platform/arm64/samsung-galaxybook4-edge.c)
++	 * turns that node on with the firmware's value. Zinitix's value below is this board's;
++	 * the other three are placeholders the firmware's value replaces.
++	 */
++	/* ELAN0B00 */
++	touchpad@15 {
++		compatible = "hid-over-i2c";
++		reg = <0x15>;
++
++		hid-descr-addr = <0x1>;
++		interrupts-extended = <&tlmm 3 IRQ_TYPE_LEVEL_LOW>;
++
++		pinctrl-0 = <&tpad_default>;
++		pinctrl-names = "default";
++
++		status = "fail-needs-probe";
++	};
++
++	/* SYN2602 */
++	touchpad@20 {
++		compatible = "hid-over-i2c";
++		reg = <0x20>;
++
++		hid-descr-addr = <0x20>;
++		interrupts-extended = <&tlmm 3 IRQ_TYPE_LEVEL_LOW>;
++
++		pinctrl-0 = <&tpad_default>;
++		pinctrl-names = "default";
++
++		status = "fail-needs-probe";
++	};
++
++	/* ZNT0001 (Zinitix) */
+ 	touchpad@40 {
+ 		compatible = "hid-over-i2c";
+ 		reg = <0x40>;
+@@ -892,6 +927,22 @@
+ 
+ 		pinctrl-0 = <&tpad_default>;
+ 		pinctrl-names = "default";
++
++		status = "fail-needs-probe";
++	};
++
++	/* IMG4100 */
++	touchpad@50 {
++		compatible = "hid-over-i2c";
++		reg = <0x50>;
++
++		hid-descr-addr = <0x1>;
++		interrupts-extended = <&tlmm 3 IRQ_TYPE_LEVEL_LOW>;
++
++		pinctrl-0 = <&tpad_default>;
++		pinctrl-names = "default";
++
++		status = "fail-needs-probe";
+ 	};
+ };
+ 
