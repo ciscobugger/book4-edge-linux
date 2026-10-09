@@ -16,7 +16,7 @@ as patch 0003, for reading.
 | Display (KDB KD156N2030A03 eDP), backlight | works (`patches/0001`) |
 | Boot splash | `userspace/boot-splash` (plymouth does not work here) |
 | GPU (Adreno X1-45, freedreno/turnip) | works; see `userspace/udev/90-book4-gpu-floor.rules` for the devfreq floor |
-| Keyboard, touchpad | work (`userspace/udev/61-…` fixes the tablet misdetection). Other SKUs use a different touchpad address: `docs/touchpad-variants.md` |
+| Keyboard, touchpad | work (`userspace/udev/61-…` fixes the tablet misdetection). Any of the four touchpads Samsung fits is turned on from the firmware's values (`patches/0007`, `0008`; not yet booted on a non-Zinitix unit) |
 | UFS storage | works |
 | Wi-Fi (WCN7850) | works with a board file built by `scripts/make-board-2.sh` |
 | Bluetooth | works; set the address, see below |
@@ -108,7 +108,11 @@ builds it. Rebuild the initramfs after installing firmware: the `FILES=` line in
 - `patches/`: `0001` adds the panel to panel-edp; `0002` mirrors the
   front camera's HFLIP (board-specific hack, explained in the message); `0003`
   adds the board DTS to the tree; `0004` caps a free-CMA counter that drifts
-  during uptime and froze the desktop (`docs/memory.md`).
+  during uptime and froze the desktop (`docs/memory.md`); `0005` is the UFS
+  no-timestamp quirk for this laptop's storage; `0006` gives the sound card one
+  name on every keyboard variant, so the UCM profile matches without a per-SKU link.
+  `0007` and `0008` describe all four touchpads Samsung fits and turn on the one
+  the firmware names (`docs/touchpad-variants.md`).
   `patches/debug/` holds CSIPHY diagnostics that the verified kernel carried; not a fix.
 - `config/`: the kernel config and what was changed from the base and why.
 - `driver/samsung-galaxybook-ec/`: ENE KB9058 EC over I2C: battery, AC,

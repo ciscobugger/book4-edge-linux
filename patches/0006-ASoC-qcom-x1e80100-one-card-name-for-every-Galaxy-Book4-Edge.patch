@@ -1,0 +1,59 @@
+From: Abdul <xizko55@gmail.com>
+Subject: [PATCH] ASoC: qcom: x1e80100: one card name for every Galaxy Book4 Edge 15.6
+
+ASoC names the card from DMI as vendor-product-version-board, and this
+laptop's board name carries the keyboard's country (NP750XQA-KB2UK). UCM
+found the Book4 Edge profile only on the UK keyboard; every other one fell
+back to the generic x1e80100 profile, with the wrong speaker channels.
+The card is now "Samsung-GalaxyBook4Edge" on any NP750XQA, the name the
+profile file already has.
+---
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -2,6 +2,7 @@
+ // Copyright (c) 2023, Linaro Limited
+ 
+ #include <dt-bindings/sound/qcom,q6afe.h>
++#include <linux/dmi.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/soundwire/sdw.h>
+@@ -193,11 +194,28 @@
+ 	}
+ }
+ 
++/*
++ * UCM finds a card's profile by its DMI long name, which ends in the board name. On the
++ * Galaxy Book4 Edge 15.6 the board name carries the keyboard's country (NP750XQA-KB2UK, ...),
++ * so the card gets one name for every keyboard.
++ */
++static const struct dmi_system_id x1e80100_long_names[] = {
++	{
++		.matches = {
++			DMI_MATCH(DMI_BOARD_VENDOR, "SAMSUNG ELECTRONICS CO., LTD."),
++			DMI_MATCH(DMI_BOARD_NAME, "NP750XQA"),
++		},
++		.driver_data = (void *)"Samsung-GalaxyBook4Edge",
++	},
++	{}
++};
++
+ static int x1e80100_platform_probe(struct platform_device *pdev)
+ {
+ 	struct snd_soc_card *card;
+ 	struct x1e80100_snd_data *data;
+ 	struct device *dev = &pdev->dev;
++	const struct dmi_system_id *id;
+ 	int ret;
+ 
+ 	card = devm_kzalloc(dev, sizeof(*card), GFP_KERNEL);
+@@ -220,6 +238,9 @@
+ 	data->cfg = of_device_get_match_data(dev);
+ 
+ 	card->driver_name = data->cfg->driver_name;
++	id = dmi_first_match(x1e80100_long_names);
++	if (id)
++		card->long_name = id->driver_data;
+ 	x1e80100_add_be_ops(card);
+ 
+ 	return devm_snd_soc_register_card(dev, card);

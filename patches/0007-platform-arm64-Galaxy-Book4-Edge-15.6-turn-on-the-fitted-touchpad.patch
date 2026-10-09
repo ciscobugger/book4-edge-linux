@@ -1,0 +1,139 @@
+From: Abdul <xizko55@gmail.com>
+Subject: [PATCH] platform: arm64: Galaxy Book4 Edge 15.6: turn on the fitted touchpad
+
+Samsung fits one of four touchpads in the NP750XQA (ELAN, Zinitix,
+Synaptics, IMG), each at its own I2C address and with its own HID
+descriptor register. UEFI leaves which one, and both values, in the memory
+the DSDT calls SNVS, where they survive a device-tree boot. This reads
+them before the I2C controller's driver loads and turns on the matching
+"fail-needs-probe" touchpad node with the firmware's descriptor register.
+Values that are not one of the four fall back to the Zinitix node as the
+device tree writes it.
+---
+diff --git a/drivers/platform/arm64/Kconfig b/drivers/platform/arm64/Kconfig
+index 7a364e40f..5a47e9c6e 100644
+--- a/drivers/platform/arm64/Kconfig
++++ b/drivers/platform/arm64/Kconfig
+@@ -127,4 +127,13 @@ config EC_LENOVO_YOGA_SLIM7X
+ 	  mute button, and reporting device suspend to the EC so it can take
+ 	  appropriate actions.
+ 
++config SAMSUNG_GALAXYBOOK4_EDGE
++	bool "Samsung Galaxy Book4 Edge 15.6 touchpad"
++	depends on ARCH_QCOM || COMPILE_TEST
++	depends on OF_DYNAMIC
++	help
++	  Say Y here on the Samsung Galaxy Book4 Edge 15.6 (NP750XQA). Samsung fits
++	  one of four touchpads in it; this turns on the one the firmware names, with
++	  the firmware's HID descriptor register.
++
+ endif # ARM64_PLATFORM_DEVICES
+diff --git a/drivers/platform/arm64/Makefile b/drivers/platform/arm64/Makefile
+index affb7c14d..6ddd15212 100644
+--- a/drivers/platform/arm64/Makefile
++++ b/drivers/platform/arm64/Makefile
+@@ -12,3 +12,4 @@ obj-$(CONFIG_EC_LENOVO_YOGA_C630) += lenovo-yoga-c630.o
+ obj-$(CONFIG_EC_LENOVO_THINKPAD_T14S) += lenovo-thinkpad-t14s.o
+ obj-$(CONFIG_EC_QCOM_HAMOA) += qcom-hamoa-ec.o
+ obj-$(CONFIG_EC_LENOVO_YOGA_SLIM7X) += lenovo-yoga-slim7x.o
++obj-$(CONFIG_SAMSUNG_GALAXYBOOK4_EDGE) += samsung-galaxybook4-edge.o
+diff --git a/drivers/platform/arm64/samsung-galaxybook4-edge.c b/drivers/platform/arm64/samsung-galaxybook4-edge.c
+new file mode 100644
+index 000000000..ac217c2ae
+--- /dev/null
++++ b/drivers/platform/arm64/samsung-galaxybook4-edge.c
+@@ -0,0 +1,94 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Samsung Galaxy Book4 Edge 15.6 (NP750XQA): turns on the touchpad Samsung fitted.
++ *
++ * The chassis takes one of four touchpads, each at its own I2C address and with its own HID
++ * descriptor register. UEFI writes which one is fitted, its address and its descriptor register
++ * into memory the DSDT calls SNVS (TPTY, TPDA and TPDO), and they are still there on a
++ * device-tree boot. The device tree has a "touchpad" node for each, all "fail-needs-probe";
++ * this turns on the one the firmware names, with the firmware's descriptor register. It runs
++ * before the I2C controller's driver loads, so the touchpad is created once, at its address.
++ */
++
++#include <linux/init.h>
++#include <linux/io.h>
++#include <linux/kernel.h>
++#include <linux/of.h>
++#include <linux/printk.h>
++
++#define SNVS_TOUCHPAD	0xd4eea068	/* TPDF, TPTY, TPDA, TPDO */
++
++/* by TPTY: what ACPI reports, and the I2C address */
++static const struct {
++	const char *name;
++	u8 addr;
++} touchpads[] = {
++	{ "ELAN0B00", 0x15 },
++	{ "ZNT0001", 0x40 },
++	{ "SYN2602", 0x20 },
++	{ "IMG4100", 0x50 },
++};
++
++/* firmware values that are not one of the four: the Zinitix node as the device tree writes it */
++#define FALLBACK	1
++
++static struct of_changeset touchpad_cs;
++
++static int __init galaxybook4_edge_touchpad(void)
++{
++	struct device_node *np;
++	struct property *prop;
++	u8 *snvs, type, addr, descr;
++	u32 reg;
++	int ret;
++
++	if (!of_machine_is_compatible("samsung,galaxy-book4-edge-np750xqa"))
++		return 0;
++
++	snvs = memremap(SNVS_TOUCHPAD, 4, MEMREMAP_WB);
++	if (!snvs)
++		return -ENOMEM;
++	type = snvs[1];
++	addr = snvs[2];
++	descr = snvs[3];
++	memunmap(snvs);
++
++	if (type >= ARRAY_SIZE(touchpads) || addr != touchpads[type].addr || !descr) {
++		pr_warn("galaxybook4-edge: firmware touchpad %u at 0x%02x, descriptor 0x%02x: using %s\n",
++			type, addr, descr, touchpads[FALLBACK].name);
++		type = FALLBACK;
++		addr = touchpads[FALLBACK].addr;
++		descr = 0;
++	}
++
++	for_each_node_by_name(np, "touchpad") {
++		if (!of_device_is_compatible(np, "hid-over-i2c") ||
++		    of_property_read_u32(np, "reg", &reg) || reg != addr)
++			continue;
++
++		of_changeset_init(&touchpad_cs);
++		ret = 0;
++		if (descr) {
++			prop = of_find_property(np, "hid-descr-addr", NULL);
++			if (prop)
++				ret = of_changeset_remove_property(&touchpad_cs, np, prop);
++			ret = ret ?: of_changeset_add_prop_u32(&touchpad_cs, np, "hid-descr-addr",
++								 descr);
++		}
++		ret = ret ?: of_changeset_update_prop_string(&touchpad_cs, np, "status", "okay");
++		ret = ret ?: of_changeset_apply(&touchpad_cs);
++		of_node_put(np);
++		if (ret) {
++			of_changeset_destroy(&touchpad_cs);
++			pr_err("galaxybook4-edge: could not turn on the %s touchpad: %d\n",
++			       touchpads[type].name, ret);
++			return ret;
++		}
++		pr_info("galaxybook4-edge: touchpad %s at 0x%02x\n", touchpads[type].name, addr);
++		return 0;
++	}
++
++	pr_warn("galaxybook4-edge: no touchpad node at 0x%02x in the device tree\n", addr);
++	return 0;
++}
++subsys_initcall(galaxybook4_edge_touchpad);

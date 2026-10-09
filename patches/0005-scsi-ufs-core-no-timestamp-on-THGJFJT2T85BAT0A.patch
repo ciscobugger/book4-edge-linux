@@ -1,0 +1,20 @@
+From: Abdul <xizko55@gmail.com>
+Subject: [PATCH] scsi: ufs: core: no timestamp support on Toshiba THGJFJT2T85BAT0A
+
+The Galaxy Book4 Edge's UFS part rejects the timestamp attribute, like the THGJFJT1E45BATP
+already listed. Found running on this laptop's kernel (kernel-ws) on 2026-10-08 without a patch.
+---
+diff --git a/drivers/ufs/core/ufshcd.c b/drivers/ufs/core/ufshcd.c
+index a41b56dbf..98df15e22 100644
+--- a/drivers/ufs/core/ufshcd.c
++++ b/drivers/ufs/core/ufshcd.c
+@@ -321,6 +321,9 @@ static const struct ufs_dev_quirk ufs_fixups[] = {
+ 	{ .wmanufacturerid = UFS_VENDOR_TOSHIBA,
+ 	  .model = "THGJFJT1E45BATP",
+ 	  .quirk = UFS_DEVICE_QUIRK_NO_TIMESTAMP_SUPPORT },
++	{ .wmanufacturerid = UFS_VENDOR_TOSHIBA,
++	  .model = "THGJFJT2T85BAT0A",
++	  .quirk = UFS_DEVICE_QUIRK_NO_TIMESTAMP_SUPPORT },
+ 	{}
+ };
+ 
